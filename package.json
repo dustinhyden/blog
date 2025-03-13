@@ -63,7 +63,8 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
     "prettier": "^3.5.3",
-    "prettier-plugin-tailwindcss": "^0.6.11"
+    "prettier-plugin-tailwindcss": "^0.6.11",
+    "typescript": "^5.8.2"
   },
   "lint-staged": {
     "*.+(js|jsx|ts|tsx)": [
