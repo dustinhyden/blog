@@ -1,0 +1,231 @@
+---
+title: 'How to Set Up `next-sitemap` in Your Next.js Project'
+date: '2025-03-14'
+tags: ['nextjs', 'seo', 'sitemaps', 'tutorial']
+draft: false
+summary: Just wanted to say hi and welcome to the blog.
+---
+
+When working with Next.js, you might know that the framework has built-in support for sitemaps, but these are somewhat limited. If you have a growing site with lots of pages, you'll eventually run into the issue of Google's sitemap limits. Google allows a maximum of 50,000 URLs in a single sitemap, and that can quickly become a problem if your site grows beyond that threshold. [This is where the next-sitemap package steps in](https://www.npmjs.com/package/next-sitemap).
+
+Now, when I first implemented `next-sitemap` I felt as though the docs left something to be desired. Let's just say, it took me longer than it should have to set this up. So, I wanted to create a post to help other devs get set up.
+
+## The Limitations of Built-in Next.js Sitemaps
+
+As mentioned, Next.js does have basic support for generating sitemaps, but it doesn't provide advanced features like automatic splitting or the ability to handle large websites with thousands of pages. The built-in functionality might be good for small projects, but as your site grows, you'll need more control over how your sitemaps are structured.
+
+## Why You Need Next-Sitemap
+
+`next-sitemap` is a package designed to help manage your sitemaps in a way that automatically splits them up if necessary. With `next-sitemap`, you can generate multiple sitemaps and a sitemap index file, all while ensuring your site's SEO remains optimized for search engines like Google.
+
+Here's how `next-sitemap` can help:
+
+1. **Automatic Sitemap Splitting**: If your site exceeds 50,000 URLs, `next-sitemap` can automatically split the URLs across multiple sitemaps.
+2. **Sitemap Index File**: It will also create a sitemap index file that references all your sitemaps, staying within Google's guidelines. It acts as the entry point for all of your actual sitemaps.
+3. **Simple Configuration**: The package integrates seamlessly into your Next.js project and only requires minimal setup to get started. _cough_ minimal _cough_
+4. **Static & Dynamic Sitemaps**: Define sitemaps that need to be generated on an as needed basis, whereas other sitemaps can be generated during build time.
+
+## How to Set Up Next-Sitemap in Your Next.js Project
+
+Setting up `next-sitemap` requires a few steps, and some concepts that often aren't tackled with a regular Next.js application. But let's jump in already.
+
+### Step 1: Install the Package
+
+First, you need to install `next-sitemap` into your Next.js project:
+
+```bash
+npm install next-sitemap
+```
+
+I prefer npm, call me old school. If you're using a different package manager it's essentially the same!
+
+### Step 2: Create the Sitemap Configuration File
+
+Next, create a `next-sitemap.config.js` configuration file at the root of your project. This file will hold the configuration for generating your sitemaps.
+
+```js
+// next-sitemap.config.js
+const config = {
+  siteUrl: 'https://www.yoursite.com', // Replace with your site's URL
+  generateRobotsTxt: true, // (optional) to generate robots.txt file
+  changefreq: 'daily', // (optional) set the change frequency
+  priority: 0.7, // (optional) set the default priority
+  sitemapSize: 50000, // (optional) split sitemaps if the number of URLs exceeds 50,000
+}
+```
+
+We will get into robots.txt further down. For now, enable this setting to true. Search engines require a `robots.txt` file to know which pages they are allowed to crawl. Additionally, setting the change frequency helps Google identify which pages update more frequently, optimizing their crawling process. This shows you're making an effort to avoid wasting resources, which can improve your site's crawl efficiency.
+
+A key point: use `.js` instead of `.ts` for this file. Since the plugin operates as a `postbuild` script, it runs without TypeScript, meaning there's no need for TS compilation. Setting up a TypeScript-to-JS compilation in a post-build environment is a separate concern for later.
+
+### Step 3: The Post Build Script
+
+For those of you that dont know, you can add `postbuild` to your `package.json`, and whenever you build your app the post build will run afterwards. This is very useful in cases where you want to have side actions that rely on the build files themselves. In our case, sitemaps!
+
+```json
+// package.json
+{
+  "name": "My awesome app",
+  "version": "3.1.4",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "postbuild": "next-sitemap"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
+```
+
+Now, whenever you run `npm run build` the sitemaps will try to run. However, this won't do anything for us just yet. There's quite a bit more to do...
+
+### Step 4: Setting Up Static Sitemaps
+
+What I found unclear in the documentation is that we can define both static and dynamic sitemap items! This means we can create a list of paths generated at build time, and have others generated on-demand. Why is this useful? Consider "fluff pages" like your about or contact pages. These don't change often and likely only update when you rebuild your app. These are perfect candidates for static sitemaps.
+
+To define static sitemaps, we need to add two functions to the `next-sitemap.config.js` file: the `additionalPaths()` function and the `transform()` function.
+
+Let's start with the `transform()` function:
+
+```js
+  transform: async (config, path, freq, priority) => {
+    return {
+      loc: path,
+      changefreq: freq || config.changefreq,
+      priority: priority || config.priority,
+      lastmod: config.autoLastmod ? new Date().toISOString() : undefined,
+    }
+  },
+```
+
+The above is my default `transform()` function. It takes its own config object, the path for which I want to create a sitemap record, along with optional frequency and priority. If these aren't supplied, I use the defaults from the config file. The four properties (loc, changereq, priority, and lastmod) aren't the only accepted sitemap properties. You can extend this in various ways, and some vendors have additional requirements. [For more details on other properties you might want to add, visit the Sitemaps.org protocol](https://www.sitemaps.org/protocol.html).
+
+Next, we need to add the `additionalPaths()` function to our `next-sitemap.config.js` file.
+
+```js
+  additionalPaths: async (config) => {
+    const staticPages = [
+      await config.transform(config, "/", "always", 1),
+      await config.transform(config, "/about", "monthly", 0.3),
+      await config.transform(config, "/contact", "monthly", 0.3),
+    ]
+    return staticPages
+  },
+```
+
+**This function is where we define our static sitemap entries.** I kept it simple by just creating an array. I find calling `config.transform(config, ...)` a bit odd. Another approach could be moving the `transform()` function outside the `config` object or putting the `additionalPaths()` in its own file, but I'm trying to stay close to the documentation.
+
+If you're curious, sitemap frequency can be one of the following:
+
+- always
+- hourly
+- daily
+- weekly
+- monthly
+- yearly
+- never
+
+At this point, you can run `npm run build` and something should happen. If you visit `localhost:3000/sitemap.xml`, you should see the sitemap with some nice content.
+
+### Step 5: Setting Up Dynamic Sitemaps
+
+The next thing you'll likely want is dynamic sitemaps. For example, if you want to index all the shows on your movie website, doing this at build time would be a poor choice, as the sitemap would become outdated as soon as a new show is added. What we need now is dynamic sitemaps.
+
+First, add the following to your `next-sitemap.config.js`:
+
+```js
+exclude: ["/shows-sitemap.xml"],
+```
+
+In this array, you can add all the XML files that will be generated dynamically. **Why put them in `exclude` then?** You do this because you're telling `next-sitemap` to exclude these from the static generation. It's a bit of an odd approach, but it's better than the alternative.
+
+This route should match perfectly with the routes you want to use to generate the dynamic pages. What I like to do within the `app` directory is create a folder called `(sitemaps)` to easily group all my maps. Then, I create a folder called `/shows-sitemap.xml` and finally a `route.ts` inside that.
+
+```js
+// app/(sitemaps)/shows-sitemap.xml/route.ts
+import { getServerSideSitemap, ISitemapField } from "next-sitemap"
+
+export async function GET(request: Request) {
+  let shows = await db.shows.findMany()
+  const showEntries: ISitemapField[] = shows.map((show) => ({
+    loc: `${process.env.NEXT_PUBLIC_URL}/shows/${shows.slug}`,
+    lastmod: event.updatedAt.toISOString(),
+    priority: 0.9,
+    changefreq: "daily",
+  }))
+  return getServerSideSitemap(eventsPaths)
+}
+```
+
+The above is just an example; you'll need to run your own query to your own database, of course. Once you've done this, run `npm run build` and visit `localhost:3000/sitemap.xml` to see the results.
+
+### Step 6: Creating A Robots.txt File
+
+Finally, we can add our `robots.txt` information. This file tells crawlers which pages they can access and which they cannot. Let's edit the `next-sitemap.config.js` again to add the following:
+
+```js
+  robotsTxtOptions: {
+    additionalSitemaps: [`${process.env.NEXT_PUBLIC_URL}/shows-sitemap.xml`], // Add your dynamic site maps here
+    policies: [
+      {
+        userAgent: "*",
+        allow: "/", // "/" means all pages can be crawled, not including the disallowed pages on the next line
+        disallow: ["/api"], // Add all the routes the crawler should not go to
+      },
+    ],
+  },
+
+```
+
+### Step 7: The final result
+
+Depending on your Next.js setup, you may be able to use Import/Export within a JS file (if you allow modules), or you may need to use commonJS `module.exports`. Below is an example of the final file using `module.exports`:
+
+```js
+const config = {
+  siteUrl: 'https://www.yoursite.com', // Replace with your site's URL
+  generateRobotsTxt: true, // (optional) to generate robots.txt file
+  changefreq: 'daily', // (optional) set the change frequency
+  priority: 0.7, // (optional) set the default priority
+  sitemapSize: 50000, // (optional) split sitemaps if the number of URLs exceeds 50,000
+  transform: async (config, path, freq, priority) => {
+    return {
+      loc: path,
+      changefreq: freq || config.changefreq,
+      priority: priority || config.priority,
+      lastmod: config.autoLastmod ? new Date().toISOString() : undefined,
+    }
+  },
+  additionalPaths: async (config) => {
+    const staticPages = [
+      await config.transform(config, '/', 'always', 1),
+      await config.transform(config, '/about', 'monthly', 0.3),
+      await config.transform(config, '/contact', 'monthly', 0.3),
+    ]
+    return staticPages
+  },
+  exclude: ['/shows-sitemap.xml'],
+  robotsTxtOptions: {
+    additionalSitemaps: [`${process.env.NEXT_PUBLIC_URL}/shows-sitemap.xml`], // Add your dynamic site maps here
+    policies: [
+      {
+        userAgent: '*',
+        allow: '/', // "/" means all pages can be crawled, not including the disallowed pages on the next line
+        disallow: ['/api'], // Add all the routes the crawler should not go to
+      },
+    ],
+  },
+}
+
+/** @type {import('next-sitemap').IConfig} */
+module.exports = config
+```
+
+The `@type` in a commonJS file provides us some TypeScript support. It looks a bit ugly, but it works!
+
+## Conclusion
+
+By automating sitemap generation, splitting, and indexing, `next-sitemap` lets you focus on your website content rather than SEO infrastructure. With just a few simple configurations, your Next.js project will be optimized for search engines with a well-structured sitemap that complies with Google's guidelines.
+
+I've been me, you've been you. Take care!
